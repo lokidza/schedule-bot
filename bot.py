@@ -913,10 +913,21 @@ async def health(request: web.Request):
     return web.Response(text="alive")
 
 
+async def manual_init_db(request: web.Request):
+    if WEBHOOK_SECRET and request.query.get("key") != WEBHOOK_SECRET:
+        return web.Response(status=401, text="unauthorized")
+    try:
+        init_db()
+        return web.Response(text="ГОТОВО: таблиці створено (або вже існували).")
+    except Exception as e:
+        return web.Response(status=500, text=f"ПОМИЛКА: {e}")
+
+
 async def on_startup(web_app: web.Application):
     global application
     application = build_application()
     await application.initialize()
+    await post_init(application)  # тут создаётся init_db() — не вызывается сам по себе без run_polling/run_webhook
     await application.start()
 
     if WEBHOOK_URL:
@@ -946,6 +957,7 @@ def create_web_app() -> web.Application:
     web_app.router.add_post("/webhook", telegram_webhook)
     web_app.router.add_get("/check-schedule", check_schedule)
     web_app.router.add_get("/", health)
+    web_app.router.add_get("/init-db", manual_init_db)
     web_app.on_startup.append(on_startup)
     web_app.on_cleanup.append(on_cleanup)
     return web_app
@@ -953,3 +965,4 @@ def create_web_app() -> web.Application:
 
 if __name__ == "__main__":
     web.run_app(create_web_app(), port=PORT)
+
